@@ -76,15 +76,34 @@ describe Shortener::ShortenedUrl, type: :model do
       end
 
       context 'same url as existing' do
-        it 'returns the same shortened link record' do
-          expect(Shortener::ShortenedUrl.generate!(url)).to eq existing_shortened_url
-        end
-      end
+        context 'no owner' do
+          it 'returns the same shortened link record' do
+            expect(Shortener::ShortenedUrl.generate!(url)).to eq existing_shortened_url
+          end
 
-      context 'same url as existing, but with a different owner' do
-        let(:owner) { User.create }
-        it 'returns the a new shortened link record' do
-          expect(Shortener::ShortenedUrl.generate!(url, owner: owner)).not_to eq existing_shortened_url
+          context 'with category' do
+            it 'returns a new shortened link record' do
+              new_url = Shortener::ShortenedUrl.generate!(url, category: 'test')
+              expect(new_url.category).to eq 'test'
+              expect(new_url).to_not eq existing_shortened_url
+            end
+
+            context 'original url had same category' do
+              let!(:existing_shortened_url) { Shortener::ShortenedUrl.generate!(url, category: 'test') }
+              it 'returns the same shortened link record' do
+                new_url = Shortener::ShortenedUrl.generate!(url, category: 'test')
+                expect(new_url).to eq existing_shortened_url
+                expect(new_url.category).to eq 'test'
+              end
+            end
+          end
+        end
+
+        context 'a different owner' do
+          let(:owner) { User.create }
+          it 'returns the a new shortened link record' do
+            expect(Shortener::ShortenedUrl.generate!(url, owner: owner)).not_to eq existing_shortened_url
+          end
         end
       end
 
@@ -155,7 +174,7 @@ describe Shortener::ShortenedUrl, type: :model do
     end
   end
 
-  describe '#increment_use_count' do
+  describe '#increment_usage_count' do
     let(:url) { 'https://example.com'}
     let(:short_url) { Shortener::ShortenedUrl.generate!(url) }
     it 'increments the use_count on the shortenedLink' do
@@ -243,6 +262,16 @@ describe Shortener::ShortenedUrl, type: :model do
           result = Shortener::ShortenedUrl.fetch_with_token(token: short_url.unique_key)
           expect(result[:url]).to eq url
           expect(result[:shortened_url]).to eq short_url
+        end
+        it "increments use count" do
+          expect_any_instance_of(Shortener::ShortenedUrl).to receive(:increment_usage_count)
+          Shortener::ShortenedUrl.fetch_with_token(token: short_url.unique_key)
+        end
+        context "with track set to false" do
+          it "does not increment use count" do
+            expect_any_instance_of(Shortener::ShortenedUrl).not_to receive(:increment_usage_count)
+            Shortener::ShortenedUrl.fetch_with_token(token: short_url.unique_key, track: false)
+          end
         end
       end
 

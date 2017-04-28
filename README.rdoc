@@ -39,6 +39,21 @@ migration:
     end
   end
 
+=== v0.5.6 to v0.6.1
+v0.6.1 introduced the ability to categorize a shortened URL. The category value
+is stored in a string column in the database, which must be added to your schema with the following
+migration:
+
+  bundle exec rails g migration add_category_to_shortened_url category:string:index
+
+
+  class AddCategoryToShortenedUrl < ActiveRecord::Migration
+    def change
+      add_column :shortened_urls, :category, :string
+      add_index :shortened_urls, :category
+    end
+  end
+
 === Some niceities of Shortener:
 
 * The controller does a 301 redirect, which is the recommended type of redirect for maintaining maximum google juice to the original URL;
@@ -158,6 +173,16 @@ In rails you can put next line into config/initializers/shortener.rb
 
   Shortener.forbidden_keys.concat %w(terms promo)
 
+=== Ignoring Robots
+
+By default Shortener will count all visits to a shortened url, including any crawler
+robots like the Google Web Crawler, or Twitter's link unshortening bot. To ignore
+these visits, Shortener makes use of the excellent voight_kampff gem to identify
+web robots. This feature is disabled by default. To enable add the following to
+your shortener configuration:
+
+  Shortener.ignore_robots = true
+
 === URL Parameters
 
 Parameters are passed though from the shortened url, to the destination URL. If the destination
@@ -216,8 +241,9 @@ For a bit of backstory to Shortener see this {blog post}[http://jamespmcgrath.co
 
 Shortener is used in a number of production systems, including, but not limited to:
 
-{Doorkeeper - An Event Management Tool}[http://www.doorkeeperhq.com/]
-{1001tweets - Repost your tweets to get more clicks}[http://www.1001tweets.com/]
+- {Doorkeeper - An Event Management Tool}[http://www.doorkeeperhq.com/]
+- {1001tweets - Repost your tweets to get more clicks}[http://www.1001tweets.com/]
+- {NewsMaker.io - The curated newsletter builder}[https://www.newsmaker.io/]
 
 If you are using Shortener in your project and would like to be added to this list, please get in touch!
 

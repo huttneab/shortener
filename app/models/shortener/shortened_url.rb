@@ -25,33 +25,48 @@ class Shortener::ShortenedUrl < ActiveRecord::Base
   # generate a shortened link from a url
   # link to a user if one specified
   # throw an exception if anything goes wrong
-  def self.generate!(destination_url, owner: nil, custom_key: nil, expires_at: nil, fresh: false)
+  def self.generate!(destination_url, owner: nil, custom_key: nil, expires_at: nil, fresh: false, category: nil)
     # if we get a shortened_url object with a different owner, generate
     # new one for the new owner. Otherwise return same object
     result = if destination_url.is_a? Shortener::ShortenedUrl
       if destination_url.owner == owner
         destination_url
       else
-        generate!(destination_url.url,
-                            owner:      owner,
-                            custom_key: custom_key,
-                            expires_at: expires_at,
-                            fresh:      fresh
-                          )
+        generate!(
+          destination_url.url,
+          owner:      owner,
+          custom_key: custom_key,
+          expires_at: expires_at,
+          fresh:      fresh,
+          category:   category
+        )
       end
     else
       scope = owner ? owner.shortened_urls : self
       creation_method = fresh ? 'create' : 'first_or_create'
-      scope.where(url: clean_url(destination_url)).send(creation_method, unique_key: custom_key, custom_key: custom_key, expires_at: expires_at)
+
+      scope.where(url: clean_url(destination_url), category: category).send(
+        creation_method,
+        unique_key: custom_key,
+        custom_key: custom_key,
+        expires_at: expires_at
+      )
     end
 
     result
   end
 
   # return shortened url on success, nil on failure
-  def self.generate(destination_url, owner: nil, custom_key: nil, expires_at: nil, fresh: false)
+  def self.generate(destination_url, owner: nil, custom_key: nil, expires_at: nil, fresh: false, category: nil)
     begin
-      generate!(destination_url, owner: owner, custom_key: custom_key, expires_at: expires_at, fresh: fresh)
+      generate!(
+        destination_url,
+        owner: owner,
+        custom_key: custom_key,
+        expires_at: expires_at,
+        fresh: fresh,
+        category: category
+      )
     rescue => e
       logger.info e
       nil
@@ -64,12 +79,11 @@ class Shortener::ShortenedUrl < ActiveRecord::Base
     /^([#{Regexp.escape(Shortener.key_chars.join)}]*).*/.match(token_str)[1]
   end
 
-  def self.fetch_with_token(token: nil, additional_params: {})
-
+  def self.fetch_with_token(token: nil, additional_params: {}, track: true)
     shortened_url = ::Shortener::ShortenedUrl.unexpired.where(unique_key: token).first
 
     url = if shortened_url
-      shortened_url.increment_usage_count
+      shortened_url.increment_usage_count if track
       merge_params_to_url(url: shortened_url.url, params: additional_params)
     else
       Shortener.default_redirect || '/'
@@ -127,8 +141,10 @@ class Shortener::ShortenedUrl < ActiveRecord::Base
   define_method CREATE_METHOD_NAME do
     count = 0
     begin
-      self.unique_key = custom_key || generate_unique_key
-      super()
+      transaction(requires_new: true) do
+        self.unique_key = generate_unique_key
+        super()
+      end
     rescue ActiveRecord::RecordNotUnique, ActiveRecord::StatementInvalid => err
       logger.info("Failed to generate ShortenedUrl with unique_key: #{unique_key}")
       self.unique_key = nil
